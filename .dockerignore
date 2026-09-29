@@ -1,0 +1,10 @@
+venv/
+data/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+mlruns/
+mlflow.db
