@@ -1,0 +1,10 @@
+venv/
+models/*.pt
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.env
+mlruns/
+mlflow.db
+data/test_output.jpg
