@@ -1,12 +1,18 @@
 from pathlib import Path
 
 import mlflow
+from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
 from tracking import init_tracking
 
+# Gleiche Hugging-Face-Quelle wie in anonymize.py - so funktioniert das
+# Nachtraining unabhaengig davon, ob es lokal oder in der CI/CD-Pipeline
+# (wo der lokale models/-Ordner nicht existiert) ausgefuehrt wird.
+HF_REPO_ID = "Franzer82/privacyshield-models"
+FACE_MODEL_FILENAME = "yolov8n-face.pt"
+
 DATASET_YAML = Path("data/retrain_dataset/dataset.yaml")
-BASE_MODEL_PATH = Path("models/yolov8n-face.pt")
 OUTPUT_DIR = Path("models/retrained")
 
 EPOCHS = 3
@@ -19,11 +25,12 @@ def run_retraining():
     Modell (laut Validierungsmetrik) besser ist als das vorherige."""
     init_tracking()
 
-    print(f"Lade Basismodell: {BASE_MODEL_PATH}")
-    model = YOLO(str(BASE_MODEL_PATH))
+    print(f"Lade Basismodell von Hugging Face: {HF_REPO_ID}/{FACE_MODEL_FILENAME}")
+    base_model_path = hf_hub_download(repo_id=HF_REPO_ID, filename=FACE_MODEL_FILENAME)
+    model = YOLO(base_model_path)
 
     with mlflow.start_run(run_name="retraining-run"):
-        mlflow.log_param("base_model", str(BASE_MODEL_PATH))
+        mlflow.log_param("base_model", f"{HF_REPO_ID}/{FACE_MODEL_FILENAME}")
         mlflow.log_param("epochs", EPOCHS)
         mlflow.log_param("dataset", str(DATASET_YAML))
         mlflow.log_param(
@@ -42,11 +49,6 @@ def run_retraining():
             verbose=False,
         )
 
-        # WICHTIG: Den tatsaechlichen Speicherort direkt vom Trainer
-        # ablesen, statt ihn selbst zusammenzubauen - Ultralytics haengt
-        # bei relativen project-Pfaden intern noch seinen eigenen
-        # Standard-Ordner ("runs/detect/") davor, was zu einem falschen,
-        # von uns geratenen Pfad fuehren wuerde.
         actual_save_dir = Path(model.trainer.save_dir)
         new_model_path = actual_save_dir / "weights" / "best.pt"
 
