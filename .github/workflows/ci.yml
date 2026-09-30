@@ -1,8 +1,5 @@
 name: CI
 
-# Dieser Workflow laeuft automatisch bei jedem Push und bei jedem Pull
-# Request auf den main-Branch - der Standard-Zeitpunkt fuer
-# kontinuierliche Qualitaetspruefung (Continuous Integration).
 on:
   push:
     branches: [main]
@@ -20,7 +17,7 @@ jobs:
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
 
       - name: Abhaengigkeiten installieren
         run: |
@@ -28,16 +25,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Code-Import pruefen
-        # Einfacher, aber aussagekraeftiger Test: Laesst sich die API
-        # ueberhaupt fehlerfrei importieren? Das faengt bereits viele
-        # Fehler ab (Syntaxfehler, fehlende Abhaengigkeiten, kaputte
-        # Imports), ohne dass wir dafuer echte Bilddaten oder Modelle
-        # brauchen, die im CI-Kontext unnoetig Zeit/Speicher kosten wuerden.
         run: |
           python -c "import sys; sys.path.insert(0, 'src'); import anonymize; import tracking; print('Alle Module erfolgreich importiert')"
 
       - name: Docker-Image bauen
-        # Stellt sicher, dass sich das Image jederzeit erfolgreich bauen
-        # laesst - ein fehlgeschlagener Build wuerde spaeteres Deployment
-        # verhindern, das wollen wir so frueh wie moeglich erkennen.
         run: docker build -t privacyshield-api-ci .
