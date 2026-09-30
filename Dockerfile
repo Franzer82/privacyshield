@@ -22,7 +22,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Jetzt den restlichen Projektcode kopieren
 COPY src/ ./src/
 COPY api/ ./api/
-COPY models/ ./models/
 
 # Informativ: auf welchem Port die API im Container lauscht
 EXPOSE 8000

@@ -1,30 +1,38 @@
-from pathlib import Path
-
 import cv2
 import numpy as np
+from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
-FACE_MODEL_PATH = Path("models/yolov8n-face.pt")
-PLATE_MODEL_PATH = Path("models/best.pt")
+# Modelle liegen auf dem Hugging Face Hub statt lokal - wichtig, damit
+# JEDER (Tester, CI/CD-Pipeline, spaeteres Deployment) die Modelle
+# automatisch bekommt, ohne dass sie manuell heruntergeladen und lokal
+# abgelegt werden muessen. Der models/-Ordner ist bewusst NICHT Teil des
+# Git-Repositories (zu gross), die Datei wird beim ersten Start
+# automatisch heruntergeladen und danach lokal zwischengespeichert.
+HF_REPO_ID = "Franzer82/privacyshield-models"
+FACE_MODEL_FILENAME = "yolov8n-face.pt"
+PLATE_MODEL_FILENAME = "license-plate-best.pt"
 
-# Ab welcher Erkennungssicherheit (0-1) ein Treffer als "echt" gilt,
-# statt als unsicheres Rauschen ignoriert zu werden.
 CONFIDENCE_THRESHOLD = 0.4
-
-# Wie stark die Verpixelung ist (groesserer Wert = staerker verpixelt).
 BLUR_STRENGTH = 25
 
 
 def load_models():
-    """Lädt beide vortrainierten YOLOv8-Modelle einmalig."""
-    face_model = YOLO(str(FACE_MODEL_PATH))
-    plate_model = YOLO(str(PLATE_MODEL_PATH))
+    """Lädt beide vortrainierten YOLOv8-Modelle - bei Bedarf automatisch
+    von Hugging Face heruntergeladen (nur beim allerersten Start; danach
+    wird die lokal zwischengespeicherte Version genutzt)."""
+    face_model_path = hf_hub_download(repo_id=HF_REPO_ID, filename=FACE_MODEL_FILENAME)
+    plate_model_path = hf_hub_download(repo_id=HF_REPO_ID, filename=PLATE_MODEL_FILENAME)
+
+    face_model = YOLO(face_model_path)
+    plate_model = YOLO(plate_model_path)
     return {"face": face_model, "plate": plate_model}
 
 
 def detect_regions(image: np.ndarray, models: dict) -> list:
-    """Führt beide Modelle auf einem Bild aus und sammelt alle gefundenen
-    Bounding Boxes (Gesichter + Kennzeichen) in einer gemeinsamen Liste."""
+    """Führt beide Modelle auf einem BELIEBIGEN Bild aus (egal ob eigenes
+    Testbild oder von einem Tester/einer Testerin hochgeladenes Foto) und
+    sammelt alle gefundenen Bounding Boxes (Gesichter + Kennzeichen)."""
     regions = []
 
     for label, model in models.items():
@@ -45,16 +53,12 @@ def detect_regions(image: np.ndarray, models: dict) -> list:
 
 def blur_regions(image: np.ndarray, regions: list) -> np.ndarray:
     """Verpixelt jede erkannte Region im Bild. Arbeitet auf einer KOPIE
-    des Bildes, damit das Original unverändert bleibt (wichtig, falls die
-    aufrufende Funktion beide Versionen noch braucht)."""
+    des Bildes, damit das Original unverändert bleibt."""
     output_image = image.copy()
 
     for region in regions:
         x1, y1, x2, y2 = region["box"]
 
-        # Sicherstellen, dass die Koordinaten innerhalb des Bildes liegen
-        # (Modelle können knapp am Bildrand leicht ueberschiessende Boxen
-        # liefern)
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(image.shape[1], x2), min(image.shape[0], y2)
 
@@ -83,6 +87,7 @@ def anonymize_image(image: np.ndarray, models: dict) -> dict:
 
 if __name__ == "__main__":
     import sys
+    from pathlib import Path
 
     if len(sys.argv) < 2:
         print("Nutzung: python3 src/anonymize.py <bildpfad>")
