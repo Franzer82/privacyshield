@@ -1,0 +1,43 @@
+name: Retraining Pipeline
+
+# "workflow_dispatch" bedeutet: Dieser Workflow startet NICHT automatisch
+# bei jedem Push (wie unser CI-Workflow), sondern muss manuell ueber die
+# GitHub-Oberflaeche ausgeloest werden - passend zu einem Retraining, das
+# typischerweise gezielt angestossen wird (z.B. wenn neue Trainingsdaten
+# vorliegen), nicht bei jeder kleinen Codeaenderung.
+on:
+  workflow_dispatch:
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Abhaengigkeiten installieren
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Bootstrap-Trainingsdaten erzeugen
+        run: python3 src/generate_bootstrap_labels.py
+
+      - name: Modell nachtrainieren
+        run: python3 src/retrain.py
+
+      - name: MLflow-Datenbank als Ergebnis-Artefakt hochladen
+        # Da GitHub Actions nach jedem Lauf seine Umgebung komplett
+        # verwirft, waeren die MLflow-Aufzeichnungen sonst nach dem Lauf
+        # verloren. Dieser Schritt sichert die Datenbank-Datei als
+        # herunterladbares Artefakt am Workflow-Lauf selbst.
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-tracking-db
+          path: mlflow.db
