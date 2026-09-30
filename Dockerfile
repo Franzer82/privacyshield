@@ -1,32 +1,42 @@
-# Offizielles, schlankes Python-Basisimage - "slim" enthaelt nur das
-# Noetigste, haelt das finale Image kleiner als das volle Python-Image.
 FROM python:3.13-slim
 
-# Systemabhaengigkeiten, die opencv-python UND ultralytics (YOLO) intern
-# benoetigen, aber nicht automatisch mitbringen - ohne diese wuerde der
-# Import von cv2/ultralytics im Container fehlschlagen.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
+# Hugging Face Spaces verlangt, dass Container NICHT als root laufen,
+# sondern als Nutzer mit UID 1000 - eine gute Sicherheitspraxis, die wir
+# hier befolgen. "useradd -m" legt dabei automatisch ein Home-Verzeichnis
+# an, das wir gleich fuer Modell-/Bibliothek-Caches brauchen.
+RUN useradd -m -u 1000 appuser
+
 WORKDIR /app
 
-# Erst NUR requirements.txt kopieren und installieren, bevor der Rest des
-# Codes reinkommt - Docker cached jeden Schritt einzeln. Aendert sich nur
-# der Code (nicht die Abhaengigkeiten), muss der langsame pip-install-
-# Schritt beim naechsten Bauen NICHT wiederholt werden.
 COPY requirements.txt .
+
+# PyTorch/torchvision GEZIELT ueber den offiziellen CPU-only-Paketindex
+# installieren (statt aus requirements.txt via normalem PyPI) - das
+# vermeidet die automatische Installation mehrerer Gigabyte an NVIDIA-
+# GPU-Bibliotheken, die wir fuer reine CPU-Inferenz nicht brauchen.
+RUN pip install --no-cache-dir torch==2.14.0 torchvision==0.29.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Jetzt den restlichen Projektcode kopieren
 COPY src/ ./src/
 COPY api/ ./api/
 
-# Informativ: auf welchem Port die API im Container lauscht
-EXPOSE 8000
+# Besitzrechte an den neu kopierten Dateien auf unseren Nicht-Root-Nutzer
+# uebertragen, bevor wir zu ihm wechseln - sonst haette "appuser" keinen
+# Lese-/Schreibzugriff auf die Anwendungsdateien.
+RUN chown -R appuser:appuser /app
 
-# Startbefehl: WICHTIG - "0.0.0.0" statt "127.0.0.1", damit die API auch
-# von AUSSERHALB des Containers erreichbar ist (127.0.0.1 waere nur von
-# innerhalb des Containers selbst erreichbar - klassischer Docker-Stolperstein).
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+USER appuser
+ENV HOME=/home/appuser
+
+# Port 7860 ist bei Hugging Face Spaces (Docker-SDK) FEST VORGESCHRIEBEN -
+# ein anderer Port wuerde von der Plattform nicht erkannt werden.
+EXPOSE 7860
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "7860"]
